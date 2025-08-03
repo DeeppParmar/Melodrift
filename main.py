@@ -23,16 +23,28 @@ from datetime import datetime, timedelta
 PORT = int(os.environ.get("PORT", 8000))
 app = FastAPI()
 
-# Serve static files (HTML, CSS, JS)
+# Serve static files (CSS, JS, images)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Serve index.html at the root
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
-    # Check if index.html exists
-    if os.path.exists("static/index.html"):
-        return FileResponse("static/index.html")
-    return HTMLResponse(content="<h1>Welcome to Melodrift</h1>", status_code=200)
+# API endpoint (keeps your existing functionality)
+@app.get("/api/status")
+async def status():
+    return {
+        "status": "success",
+        "message": "Melodrift API is running!",
+        "youtube_available": True,
+        "ytdlp_available": True
+    }
+
+# Serve frontend at root URL
+@app.get("/")
+async def serve_frontend():
+    return FileResponse("static/index.html")
+
+# Catch-all for frontend routes (enables client-side routing)
+@app.get("/{full_path:path}")
+async def catch_all(full_path: str):
+    return FileResponse("static/index.html")
 # YouTube search imports
 try:
     from youtubesearchpython import VideosSearch
@@ -868,4 +880,5 @@ if __name__ == "__main__":
         print(f"❌ Failed to start server: {e}")
 
         sys.exit(1)
+
 

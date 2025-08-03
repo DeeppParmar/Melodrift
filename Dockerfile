@@ -1,22 +1,28 @@
 FROM python:3.11-slim
 
-# Install dependencies
+# 1. Install dependencies with clean up
 RUN apt-get update && \
     apt-get install -y ffmpeg && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
+# 2. Create and use non-root user
+RUN useradd -m appuser && \
+    mkdir -p /app/static && \
+    chown appuser:appuser /app
 WORKDIR /app
+USER appuser
 
-# Create static directory
-RUN mkdir -p /app/static
+# 3. Copy requirements first for better caching
+COPY --chown=appuser:appuser requirements.txt .
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# 4. Install dependencies with virtualenv
+RUN python -m venv /app/venv && \
+    /app/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /app/venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Copy application
-COPY . .
+# 5. Copy the rest of the application
+COPY --chown=appuser:appuser . .
 
-EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 6. Use the virtualenv and PORT variable
+ENV PATH="/app/venv/bin:$PATH"
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

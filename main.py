@@ -27,10 +27,10 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Serve index.html at the root
-@app.get("/")
-def get_index():
-    return FileResponse("static/index.html")
-
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    with open("static/index.html") as f:
+        return HTMLResponse(content=f.read())
 # YouTube search imports
 try:
     from youtubesearchpython import VideosSearch
@@ -864,4 +864,5 @@ if __name__ == "__main__":
         print("\n🛑 Server stopped by user")
     except Exception as e:
         print(f"❌ Failed to start server: {e}")
+
         sys.exit(1)

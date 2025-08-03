@@ -22,29 +22,57 @@ import requests
 from datetime import datetime, timedelta
 PORT = int(os.environ.get("PORT", 8000))
 app = FastAPI()
+# Configure CORS if needed
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Serve static files (CSS, JS, images)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Serve static files
+static_dir = Path("static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# API endpoint (keeps your existing functionality)
+# API endpoint
 @app.get("/api/status")
 async def status():
-    return {
+    return JSONResponse({
         "status": "success",
         "message": "Melodrift API is running!",
         "youtube_available": True,
         "ytdlp_available": True
-    }
+    })
 
 # Serve frontend at root URL
 @app.get("/")
 async def serve_frontend():
-    return FileResponse("static/index.html")
+    index_path = static_dir / "index.html"
+    if not index_path.exists():
+        return JSONResponse(
+            {"error": "Frontend not found"}, 
+            status_code=404
+        )
+    return FileResponse(index_path)
 
-# Catch-all for frontend routes (enables client-side routing)
+# Catch-all for frontend routes
 @app.get("/{full_path:path}")
-async def catch_all(full_path: str):
-    return FileResponse("static/index.html")
+async def catch_all(full_path: str, request: Request):
+    # First try to serve static files
+    static_file = static_dir / full_path
+    if static_file.exists() and static_file.is_file():
+        return FileResponse(static_file)
+    
+    # Fallback to index.html for client-side routing
+    index_path = static_dir / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
+    
+    return JSONResponse(
+        {"error": "Resource not found"}, 
+        status_code=404
+    )
 # YouTube search imports
 try:
     from youtubesearchpython import VideosSearch
@@ -880,5 +908,6 @@ if __name__ == "__main__":
         print(f"❌ Failed to start server: {e}")
 
         sys.exit(1)
+
 
 

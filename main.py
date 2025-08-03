@@ -22,22 +22,17 @@ import requests
 from datetime import datetime, timedelta
 PORT = int(os.environ.get("PORT", 8000))
 app = FastAPI()
-# Configure CORS if needed
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Serve static files
-static_dir = Path("static")
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# API endpoint
+# Explicitly serve index.html at root
+@app.get("/")
+async def serve_frontend():
+    return FileResponse("static/index.html")
+
+# Move API endpoints under /api prefix
 @app.get("/api/status")
-async def status():
+async def api_status():
     return JSONResponse({
         "status": "success",
         "message": "Melodrift API is running!",
@@ -45,34 +40,10 @@ async def status():
         "ytdlp_available": True
     })
 
-# Serve frontend at root URL
-@app.get("/")
-async def serve_frontend():
-    index_path = static_dir / "index.html"
-    if not index_path.exists():
-        return JSONResponse(
-            {"error": "Frontend not found"}, 
-            status_code=404
-        )
-    return FileResponse(index_path)
-
-# Catch-all for frontend routes
-@app.get("/{full_path:path}")
-async def catch_all(full_path: str, request: Request):
-    # First try to serve static files
-    static_file = static_dir / full_path
-    if static_file.exists() and static_file.is_file():
-        return FileResponse(static_file)
-    
-    # Fallback to index.html for client-side routing
-    index_path = static_dir / "index.html"
-    if index_path.exists():
-        return FileResponse(index_path)
-    
-    return JSONResponse(
-        {"error": "Resource not found"}, 
-        status_code=404
-    )
+# Catch-all route must come LAST
+@app.get("/{path:path}")
+async def catch_all(path: str):
+    return FileResponse("static/index.html")
 # YouTube search imports
 try:
     from youtubesearchpython import VideosSearch
@@ -908,6 +879,7 @@ if __name__ == "__main__":
         print(f"❌ Failed to start server: {e}")
 
         sys.exit(1)
+
 
 
 

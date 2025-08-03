@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Request
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse,HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -28,9 +28,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Serve index.html at the root
 @app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    with open("static/index.html") as f:
-        return HTMLResponse(content=f.read())
+async def read_root():
+    # Check if index.html exists
+    if os.path.exists("static/index.html"):
+        return FileResponse("static/index.html")
+    return HTMLResponse(content="<h1>Welcome to Melodrift</h1>", status_code=200)
 # YouTube search imports
 try:
     from youtubesearchpython import VideosSearch
@@ -866,3 +868,4 @@ if __name__ == "__main__":
         print(f"❌ Failed to start server: {e}")
 
         sys.exit(1)
+

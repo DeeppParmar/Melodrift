@@ -33,12 +33,6 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Serve index.html at the root
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    with open("static/index.html", "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
-
-# Status endpoint under /api
 @app.get("/api/status")
 async def api_status():
     return JSONResponse({
@@ -47,6 +41,12 @@ async def api_status():
         "youtube_available": True,
         "ytdlp_available": True
     })
+# Serve HTML index on root
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
 # YouTube search imports
 try:
     from youtubesearchpython import VideosSearch
@@ -882,6 +882,7 @@ if __name__ == "__main__":
         print(f"❌ Failed to start server: {e}")
 
         sys.exit(1)
+
 
 
 

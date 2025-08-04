@@ -153,7 +153,7 @@ class SyncMessage(BaseModel):
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.get("/", response_model=HealthResponse)
+@app.get("/api/status", response_model=HealthResponse)
 async def root():
     """Root endpoint with system status"""
     return HealthResponse(

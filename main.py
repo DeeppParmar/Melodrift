@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Request
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse,HTMLResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse , HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -20,24 +20,34 @@ import logging
 from urllib.parse import quote, unquote
 import requests
 from datetime import datetime, timedelta
+from fastapi.templating import Jinja2Templates
 PORT = int(os.environ.get("PORT", 8000))
-
-# Create FastAPI app
 app = FastAPI(
     title="SpotifyClone API",
     description="A modern music streaming API with YouTube integration and local file support",
     version="1.0.0"
 )
 
-# Serve static files (CSS, JS, images, etc.)
+# Mount static files (CSS, JS, etc.)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Serve HTML index on root
+# Templates directory for HTML
+templates = Jinja2Templates(directory="templates")
+
+# Serve HTML frontend
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    with open("static/index.html", "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+    return templates.TemplateResponse("index.html", {"request": request})
 
+# Optional: API endpoint
+@app.get("/api/status")
+async def api_status():
+    return JSONResponse({
+        "status": "success",
+        "message": "Melodrift API is running!",
+        "youtube_available": True,
+        "ytdlp_available": True
+    })
 # YouTube search imports
 try:
     from youtubesearchpython import VideosSearch
@@ -54,12 +64,6 @@ except ImportError:
     YT_DLP_AVAILABLE = False
     print("Warning: yt-dlp not available. Install with: pip install yt-dlp")
 
-# Create FastAPI app
-app = FastAPI(
-    title="SpotifyClone API",
-    description="A modern music streaming API with YouTube integration and local file support",
-    version="1.0.0"
-)
 
 # Configure CORS
 app.add_middleware(
@@ -871,14 +875,4 @@ if __name__ == "__main__":
         print("\n🛑 Server stopped by user")
     except Exception as e:
         print(f"❌ Failed to start server: {e}")
-
         sys.exit(1)
-
-
-
-
-
-
-
-
-

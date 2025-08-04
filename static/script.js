@@ -746,7 +746,6 @@ function updatePlayerQueueView() {
 }
 let queueLock = false; // Prevent concurrent queue modifications
 let autoClearQueue = false;
-
 async function playFromQueue(index = 0) {
     if (queueLock) {
         console.log('Queue is locked, waiting...');
@@ -757,105 +756,129 @@ async function playFromQueue(index = 0) {
     queueLock = true;
 
     try {
-        console.log('Playing from queue, index:', index, 'Queue length:', queue.length);
-
         if (!queue || queue.length === 0) {
-            console.log('Queue is empty');
-            isPlayingFromQueue = false;
             showNotification('Queue is empty', 'info');
+            isPlayingFromQueue = false;
             return false;
         }
 
-        // Validate index
         const safeIndex = Math.max(0, Math.min(index, queue.length - 1));
-        const song = queue[safeIndex];
+        let song = queue[safeIndex];
 
         if (!song) {
             console.error('No song found at index:', safeIndex);
             return false;
         }
 
-        console.log('Playing song from queue:', song.title);
-
-        // If YouTube song, get fresh stream URL
+        // If YouTube stream not fetched yet
         if (song.source === 'youtube' && song.id && !song.url) {
             try {
-                showNotification('Getting stream URL...');
-                const response = await fetch(`${API_BASE_URL}/api/yt/stream/${song.id}`);
+                showNotification(`Fetching stream for ${song.title || 'song'}...`);
 
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.url) {
-                        song.url = data.url;
-                        if (data.title) song.title = data.title;
-                        if (data.channel) song.artist = data.channel;
-                        if (data.thumbnail) song.thumbnail = data.thumbnail;
-                    }
-                } else {
-                    throw new Error('Failed to get stream URL');
-                }
+                const response = await fetch(`${API_BASE_URL}/api/yt/stream/${song.id}`);
+                if (!response.ok) throw new Error('Failed to fetch stream');
+
+                const data = await response.json();
+                if (!data.url) throw new Error('No stream URL found');
+
+                song.url = data.url;
+                song.title = song.title || data.title;
+                song.artist = song.artist || data.channel;
+                song.thumbnail = song.thumbnail || data.thumbnail;
+
+                // Update the song in the queue
+                queue[safeIndex] = song;
+                saveQueue();
+
+                // Remove the fixed wait time - let the player handle buffering
             } catch (error) {
-                console.error('Failed to get YouTube stream:', error);
+                console.error('Stream fetch failed:', error);
                 showNotification('Failed to load song, skipping...', 'error');
 
-                // Remove failed song and try next
                 queue.splice(safeIndex, 1);
                 saveQueue();
                 updateQueueViews();
 
-                if (queue.length > 0) {
-                    queueLock = false;
-                    return playFromQueue(0);
-                } else {
-                    queueLock = false;
-                    return false;
-                }
+                queueLock = false;
+                return playFromQueue(0);
             }
         }
 
-        // Remove song from queue (only if playing successfully)
-        queue.splice(safeIndex, 1);
-        isPlayingFromQueue = true;
-
-        // Update queue storage and UI
-        saveQueue();
-        updateQueueViews();
-
-        // Play the song
-        const success = await playSong(song);
-
-        if (!success && queue.length > 0) {
-            // If playback failed, try next song in queue
-            console.log('Playback failed, trying next in queue');
+        // Now play the song with retry logic
+        const success = await playSongWithRetry(song);
+        
+        if (success) {
+            // Only remove after successful play
+            queue.splice(safeIndex, 1);
+            isPlayingFromQueue = true;
+            saveQueue();
+            updateQueueViews();
+            return true;
+        } else {
+            showNotification('Playback failed, skipping...', 'error');
+            queue.splice(safeIndex, 1);
+            saveQueue();
+            updateQueueViews();
             queueLock = false;
             return playFromQueue(0);
         }
 
-        return success;
-
-    } catch (error) {
-        console.error('Queue playback error:', error);
-        showNotification('Queue playback failed', 'error');
+    } catch (err) {
+        console.error('Queue error:', err);
+        showNotification('Queue playback error', 'error');
         return false;
     } finally {
         queueLock = false;
     }
 }
 
+
 async function playSongWithRetry(song, attempt = 0) {
+    const maxAttempts = 3;
+    const baseDelay = 1000; // 1 second base delay
+    
     try {
+        // Add a loading state
+        showNotification(`Loading ${song.title}... (attempt ${attempt + 1}/${maxAttempts})`, 'info');
+        
+        // Set a longer timeout for initial load
+        const loadTimeout = 15000; // 15 seconds
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), loadTimeout);
+        
+        // Play the song with timeout
         await playSong(song);
+        
+        clearTimeout(timeoutId);
+        
+        // Verify playback is actually working
+        await new Promise((resolve, reject) => {
+            const verifyInterval = setInterval(() => {
+                if (audioPlayer.readyState > 2) { // HAVE_FUTURE_DATA or HAVE_ENOUGH_DATA
+                    clearInterval(verifyInterval);
+                    resolve();
+                }
+            }, 500);
+            
+            setTimeout(() => {
+                clearInterval(verifyInterval);
+                reject(new Error('Playback verification timeout'));
+            }, 5000);
+        });
+        
         return true;
     } catch (error) {
-        if (attempt < 2) { // Max 3 attempts total
-            console.warn(`Retrying song (attempt ${attempt + 1})...`);
-            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        console.warn(`Play attempt ${attempt + 1} failed:`, error);
+        
+        if (attempt < maxAttempts - 1) {
+            const delay = baseDelay * Math.pow(2, attempt); // Exponential backoff
+            await new Promise(resolve => setTimeout(resolve, delay));
             return playSongWithRetry(song, attempt + 1);
         }
         return false;
     }
 }
-
 async function onQueueItemClick(index, buttonElement) {
     buttonElement.disabled = true;
     await playFromQueue(index);
@@ -1072,9 +1095,39 @@ function handleSongEnd() {
         return;
     }
 
-    handleSongEndContinue();
+    // Add a small delay before continuing to next song
+    setTimeout(handleSongEndContinue, 500);
 }
 
+function handleSongEndContinue() {
+    // Priority 1: Check queue
+    if (queue.length > 0) {
+        console.log('Playing next from queue');
+        playFromQueue(0);
+        return;
+    }
+
+    // Priority 2: Reset queue flag if no more queue items
+    if (isPlayingFromQueue && queue.length === 0) {
+        isPlayingFromQueue = false;
+        console.log('Queue finished, switching to playlist mode');
+    }
+
+    // Priority 3: Handle playlist continuation
+    if (repeatMode === 1 || (currentPlaylist.length > 0 && currentIndex < currentPlaylist.length - 1)) {
+        playNextSong();
+    } else {
+        // End of playlist
+        isPlaying = false;
+        updatePlayPauseButton(false);
+        showNotification('Playback ended');
+
+        // Reset to first song for next play
+        if (currentPlaylist.length > 0) {
+            currentIndex = 0;
+        }
+    }
+}
 function handleSongEndContinue() {
     // Priority 1: Check queue
     if (queue.length > 0) {
@@ -2090,27 +2143,27 @@ function populateArtists() {
         {
             name: 'Trending Now',
             genre: 'Various',
-            image: '/img/trending.png'
+            image: '/static/trending.png'
         },
         {
             name: 'Hip Hop',
             genre: 'Genre',
-            image: '/img/hiphop.png'
+            image: '/static/hiphop.png'
         },
         {
             name: 'Electronic',
             genre: 'Genre',
-            image: '/img/electric.png'
+            image: '/static/electric.png'
         },
         {
             name: 'Rock',
             genre: 'Genre',
-            image: '/img/Rock.png'
+            image: '/static/Rock.png'
         },
         {
             name: 'Pop',
             genre: 'Genre',
-            image: '/img/pop.png'
+            image: '/static/pop.png'
         }
     ];
     artistsGrid.innerHTML = featuredArtists.map(artist => `
@@ -2951,7 +3004,7 @@ function togglePlayPause() {
 async function playSong(song) {
     if (!song || (!song.url && !(song.source === 'youtube' && song.id))) {
         showNotification('Invalid song data', 'error');
-        return;
+        return false;
     }
 
     try {
@@ -2973,66 +3026,46 @@ async function playSong(song) {
         addToRecentlyPlayed(song);
         updateLikeButtons();
 
-        const checkDuration = setInterval(() => {
-            if (audioPlayer.duration && !isNaN(audioPlayer.duration)) {
-                updateDuration();
-                clearInterval(checkDuration);
-            }
-        }, 100);
+        // Wait for metadata to load
+        await new Promise((resolve, reject) => {
+            const onLoadedMetadata = () => {
+                audioPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
+                resolve();
+            };
+            
+            audioPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
+            
+            // Timeout if metadata takes too long
+            setTimeout(() => {
+                audioPlayer.removeEventListener('loadedmetadata', onLoadedMetadata);
+                reject(new Error('Metadata load timeout'));
+            }, 10000);
+        });
 
         const playPromise = audioPlayer.play();
         initWaveform();
 
-        if (playPromise !== undefined) {
-            const timeout = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Playback timeout')), 10000)
-            );
+        // Wait for playback to start
+        await Promise.race([
+            playPromise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Playback timeout')), 10000))
+        ]);
 
-            await Promise.race([playPromise, timeout]);
-            isPlaying = true;
-            updatePlayPauseButton(true);
-            showNotification(`Now playing: ${song.title}`);
+        isPlaying = true;
+        updatePlayPauseButton(true);
+        showNotification(`Now playing: ${song.title}`);
 
-            // Send sync message if host
-            if (isInRoom && isHost && !syncInProgress) {
-                listenTogether.sendMessage('song_change', { song });
-            }
+        // Send sync message if host
+        if (isInRoom && isHost && !syncInProgress) {
+            listenTogether.sendMessage('song_change', { song });
         }
+
+        return true;
 
     } catch (error) {
         console.error('Playback failed:', error);
-
-        if (song.source === 'youtube' && song.id) {
-            try {
-                showNotification('Retrying with fresh URL...');
-                const response = await fetch(`${API_BASE_URL}/api/yt/stream/${song.id}`);
-                const data = await response.json();
-
-                if (response.ok && data.url) {
-                    song.url = data.url;
-                    audioPlayer.src = song.url;
-                    await audioPlayer.play();
-                    isPlaying = true;
-                    updatePlayPauseButton(true);
-                    showNotification(`Now playing: ${song.title}`);
-                    return;
-                }
-            } catch (retryError) {
-                console.error('Retry failed:', retryError);
-            }
-        }
-
-        showNotification('Failed to play song - trying next', 'error');
-        isPlaying = false;
-        updatePlayPauseButton(false);
-
-        setTimeout(() => {
-            if (queue.length > 0) {
-                playNextFromQueue();
-            } else if (currentPlaylist.length > 1) {
-                playNextSong();
-            }
-        }, 2000);
+        showNotification(`Failed to play: ${error.message}`, 'error');
+        return false;
     }
 }
 

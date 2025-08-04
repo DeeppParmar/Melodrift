@@ -30,11 +30,6 @@ app = FastAPI(
 # Serve static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Explicitly serve index.html at root
-@app.get("/")
-async def serve_frontend():
-    return FileResponse("static/index.html")
-
 # Move API endpoints under /api prefix
 @app.get("/api/status")
 async def api_status():
@@ -884,6 +879,7 @@ if __name__ == "__main__":
         print(f"❌ Failed to start server: {e}")
 
         sys.exit(1)
+
 
 
 

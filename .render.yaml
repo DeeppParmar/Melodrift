@@ -1,5 +1,10 @@
 services:
   - type: web
-    name: melodrift
+    name: melodrift-api
     env: docker
     plan: free
+    branch: main
+    region: oregon
+    dockerfilePath: Dockerfile
+    autoDeploy: true
+    healthCheckPath: /api/status

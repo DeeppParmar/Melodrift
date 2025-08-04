@@ -5,3 +5,5 @@ httpx
 yt-dlp
 jinja2
 python-multipart
+requests
+

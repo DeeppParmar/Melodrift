@@ -1,23 +1,23 @@
-# Use official Python image
-FROM python:3.11-slim
+# Use an official Python image
+FROM python:3.10-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install OS dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Install system dependencies (for yt-dlp via git)
+RUN apt-get update && apt-get install -y git
 
-# Install pip dependencies
+# Copy requirements first to leverage Docker layer caching
 COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all project files
+# Copy the rest of the project files
 COPY . .
 
-# Expose the port (Render uses 10000 internally)
+# Expose port (adjust if your app uses a different one)
 EXPOSE 10000
 
-# Start the FastAPI app
+# Start the FastAPI server
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "10000"]

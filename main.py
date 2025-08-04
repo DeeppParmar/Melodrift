@@ -32,15 +32,6 @@ app = FastAPI(
 # Serve static files (CSS, JS, images, etc.)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Serve index.html at the root
-@app.get("/api/status")
-async def api_status():
-    return JSONResponse({
-        "status": "success",
-        "message": "Melodrift API is running!",
-        "youtube_available": True,
-        "ytdlp_available": True
-    })
 # Serve HTML index on root
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -882,6 +873,7 @@ if __name__ == "__main__":
         print(f"❌ Failed to start server: {e}")
 
         sys.exit(1)
+
 
 
 

@@ -21,7 +21,12 @@ from urllib.parse import quote, unquote
 import requests
 from datetime import datetime, timedelta
 PORT = int(os.environ.get("PORT", 8000))
-app = FastAPI()
+app = FastAPI(
+    title="SpotifyClone API",
+    description="A modern music streaming API with YouTube integration and local file support",
+    version="1.0.0"
+)
+
 # Serve static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -40,10 +45,10 @@ async def api_status():
         "ytdlp_available": True
     })
 
-# Catch-all route must come LAST
-@app.get("/{path:path}")
-async def catch_all(path: str):
-    return FileResponse("static/index.html")
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    with open("static/index.html") as f:
+        return HTMLResponse(content=f.read())
 # YouTube search imports
 try:
     from youtubesearchpython import VideosSearch
@@ -879,6 +884,7 @@ if __name__ == "__main__":
         print(f"❌ Failed to start server: {e}")
 
         sys.exit(1)
+
 
 
 

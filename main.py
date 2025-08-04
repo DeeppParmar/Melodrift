@@ -21,16 +21,24 @@ from urllib.parse import quote, unquote
 import requests
 from datetime import datetime, timedelta
 PORT = int(os.environ.get("PORT", 8000))
+
+# Create FastAPI app
 app = FastAPI(
     title="SpotifyClone API",
     description="A modern music streaming API with YouTube integration and local file support",
     version="1.0.0"
 )
 
-# Serve static files
+# Serve static files (CSS, JS, images, etc.)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Move API endpoints under /api prefix
+# Serve index.html at the root
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    with open("static/index.html", "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
+
+# Status endpoint under /api
 @app.get("/api/status")
 async def api_status():
     return JSONResponse({
@@ -39,11 +47,6 @@ async def api_status():
         "youtube_available": True,
         "ytdlp_available": True
     })
-
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    with open("static/index.html") as f:
-        return HTMLResponse(content=f.read())
 # YouTube search imports
 try:
     from youtubesearchpython import VideosSearch
@@ -879,6 +882,7 @@ if __name__ == "__main__":
         print(f"❌ Failed to start server: {e}")
 
         sys.exit(1)
+
 
 
 
